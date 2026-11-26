@@ -34,6 +34,14 @@ def citations():
     return idx
 
 
+def src_note(c):
+    if not c:
+        return "见 原文/README.md"
+    if c[1] == "TLS":
+        return "TLS 中华书局点校本"
+    return f"[维基文库]({c[2]})（{c[3]}），补 TLS 缺卷" if c[1] == "维基文库" else c[1]
+
+
 def juan_file(juan: str) -> str:
     m = re.match(r"(\d+)(.*)", juan)
     return f"{int(m[1]):03d}{m[2]}.md"
@@ -47,6 +55,11 @@ def main(books):
         info = BOOKS[name]
         d = OUT / info["fan"]
         d.mkdir(parents=True, exist_ok=True)
+        prov = {}
+        pv = SOURCES / name / "来源.tsv"
+        for ln in pv.read_text(encoding="utf-8").splitlines() if pv.exists() else []:
+            c = ln.split("\t")
+            prov[c[0]] = c
         for juan, title, paras in juan_list(name):
             pages = {}
             pf = SOURCES / name / juan_file(juan).replace(".md", ".pages.tsv")
@@ -55,7 +68,7 @@ def main(books):
                     k, _, v = ln.partition("\t")
                     pages[int(k)] = v
             lines = [f"# {info['fan']}·卷{juan}　{title}", "",
-                     f"底本：见 [原文/README.md](../README.md)。段号即定位符中的“段”。", ""]
+                     f"底本：{src_note(prov.get(juan_file(juan)[:-3]))}。段号即定位符中的“段”。授权与改动说明见 [原文/README.md](../README.md)。", ""]
             for k, p in enumerate(paras, 1):
                 pg = f"　<sub>中華本頁 {pages[k]}</sub>" if pages.get(k) else ""
                 lines.append(f'<a id="p{k}"></a>**〔{k}〕**{pg}　{p}')

@@ -86,8 +86,6 @@ def main(xml, book):
     for div in root.iter(NS + "div"):
         head = div.find(NS + "head")
         htxt = re.sub(r"\s+", "", text_of(head, page)) if head is not None else ""
-        m = JUAN.search(htxt)
-        label = (f"{cn2int(m[1]):03d}{m[2]}" if m else f"x{div.get('n')}")
         paras, pages = [], []
         for p in div.findall(NS + "p"):
             page[1] = None
@@ -99,6 +97,8 @@ def main(xml, book):
             if t:
                 paras.append(t)
                 pages.append(start or page[1] or "")
+        m = JUAN.search(htxt) or (JUAN.search(paras[0]) if paras and len(paras[0]) < 20 else None)
+        label = (f"{cn2int(m[1]):03d}{m[2]}" if m else f"x{div.get('n')}")
         title = paras[0] if paras and len(paras[0]) < 30 else htxt
         f = out / f"{label}.md"
         if f.exists():  # 同一卷号出现两次（附录等），追加
@@ -107,6 +107,7 @@ def main(xml, book):
         (out / f"{label}.pages.tsv").write_text(
             "".join(f"{i}\t{pg}\n" for i, pg in enumerate(pages, 1)), encoding="utf-8")
         n_files += 1; labels.append(label)
+    (out / "来源.tsv").write_text("".join(f"{l}\tTLS\thttps://github.com/tls-kr/tls-texts\t{Path(xml).name}\n" for l in labels), encoding="utf-8")
     apply_jiaokan(book, out)
     nums = sorted({int(l[:3]) for l in labels if l[0].isdigit()})
     missing = [i for i in range(1, nums[-1] + 1) if i not in nums] if nums else []

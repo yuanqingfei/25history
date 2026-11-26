@@ -10,6 +10,9 @@
 
 | 书 | 底本 | 授权 |
 |---|---|---|
-| 史記、漢書 | [TLS](https://github.com/tls-kr/tls-texts)（Thesaurus Linguae Sericae）据中华书局点校本整理的 TEI 文本 | CC BY-SA 4.0 |
+| 多数史书 | [TLS](https://github.com/tls-kr/tls-texts)（Thesaurus Linguae Sericae）据中华书局点校本整理的 TEI 文本 | CC BY-SA 4.0 |
+| 周書、宋史、明史、清史稿，及舊唐書、新唐書、元史的缺卷 | [维基文库](https://zh.wikisource.org/) | CC BY-SA 4.0 |
+
+每卷实际所据底本写在该卷文件开头。
 
 本目录内容依 **CC BY-SA 4.0** 授权发布。相对原始 TLS 文本所做的改动：去掉注文与注号；“．”改为“。”、“､”改为“、”；去掉《史记》卷末【索隱述贊】；按 `scripts/jiaokan.tsv` 修补了 TLS 的标记错误。
