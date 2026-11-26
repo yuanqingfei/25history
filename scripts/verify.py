@@ -1,56 +1,55 @@
-"""逐字校验传记文件。
-
-规则（见 docs/编写规范.md）：
-1. 文件以 YAML 头开始，必填字段齐全，枚举字段取值合法。
-2. 正文（YAML 头之后）只允许：标题行（# 开头）、空行、引文行。
-3. 引文行格式：> 原文〔書名·卷N·篇名〕
-   原文必须是该卷底本中的一段连续文字（只忽略空白，标点、字形必须一致）。
-4. YAML 头中“品评依据”的每一条也必须是同样格式的引文，同样校验。
-
-用法: python3 scripts/verify.py [文件或目录 ...]   默认校验 人物/ 下全部 .md
-退出码非 0 表示有错误。
+"""校验 人物/ 与 家族/ 下的全部文件。规则见 docs/编写规范.md。
+- 正文只允许标题行、空行和“> 定位符”行；每个定位符必须能在底本中展开。
+- YAML 头中的 品评依据、互见、家族成员依据 等列表里的定位符同样必须能展开。
+- 枚举字段取值合法；类传归属 与 品评 的对应关系见 scripts/leizhuan.tsv。
+用法: python3 scripts/verify.py [文件或目录 ...]
 """
-import re, sys
+import sys
 from pathlib import Path
 import yaml
-
 sys.path.insert(0, str(Path(__file__).parent))
-from corpus import ROOT, load_books, juan_text, norm
+from corpus import ROOT
+from refs import resolve, RefError, REF
 
-QUOTE = re.compile(r"^>\s*(?P<text>.+?)\s*〔(?P<book>[^·〕]+)·卷(?P<juan>\d+)·(?P<pian>[^〕]+)〕\s*$")
-REF = re.compile(r"^(?P<text>.+?)\s*〔(?P<book>[^·〕]+)·卷(?P<juan>\d+)·(?P<pian>[^〕]+)〕\s*$")
 REQUIRED = ["id", "姓名", "身份", "品评", "品评依据类型", "出现卷", "校对状态"]
 身份 = {"帝王", "国王", "后妃", "宗室", "臣属", "将领", "士民", "妇女", "四夷", "方外", "其他"}
 品评 = {"君子", "普通", "小人", "恶贼"}
-依据类型 = {"史臣论赞", "类传归属", "史家叙评", "书中人物评语", "行事推断", "无"}
-
-BOOKS = load_books()
-_cache = {}
-
-
-def check_quote(m, where, errs):
-    book = BOOKS.get(m["book"])
-    if not book:
-        errs.append(f"{where}: 未知书名 {m['book']}")
-        return
-    key = (book["name"], int(m["juan"]))
-    if key not in _cache:
-        try:
-            _cache[key] = norm(juan_text(*key))
-        except FileNotFoundError:
-            errs.append(f"{where}: 找不到底本 {key}（先运行 scripts/fetch_sources.sh）")
-            return
-    if norm(m["text"]) not in _cache[key]:
-        errs.append(f"{where}: 原文不符 → {m['text'][:40]}")
+依据类型 = ["类传归属", "史臣论赞", "史家叙评", "书中人物评语", "行事推断", "无"]
+LEIZHUAN = {}
+for ln in (ROOT / "scripts" / "leizhuan.tsv").read_text(encoding="utf-8").splitlines():
+    if ln and not ln.startswith("#"):
+        k, v = ln.split("\t")[:2]
+        LEIZHUAN[k] = v
 
 
-def verify_file(path: Path):
-    errs = []
-    raw = path.read_text(encoding="utf-8")
-    if not raw.startswith("---\n"):
-        return [f"{path}: 缺少 YAML 头"]
-    _, head, body = raw.split("---\n", 2)
-    meta = yaml.safe_load(head)
+KNOWN_IDS = {}
+for t in (ROOT / "人物").rglob("_*人物表.tsv"):
+    for ln in t.read_text(encoding="utf-8").splitlines()[1:]:
+        c = ln.split("\t")
+        KNOWN_IDS[c[0]] = c[1]
+
+
+def refs_in(obj):
+    """递归取出 YAML 中所有像定位符的字符串。"""
+    if isinstance(obj, str):
+        if REF.match(obj.strip()):
+            yield obj
+    elif isinstance(obj, list):
+        for x in obj:
+            yield from refs_in(x)
+    elif isinstance(obj, dict):
+        for x in obj.values():
+            yield from refs_in(x)
+
+
+def check(ref, where, errs):
+    try:
+        resolve(ref)
+    except RefError as e:
+        errs.append(f"{where}: {e}")
+
+
+def verify_person(path, meta, body, errs):
     for k in REQUIRED:
         if k not in meta:
             errs.append(f"{path}: 缺少字段 {k}")
@@ -58,43 +57,74 @@ def verify_file(path: Path):
         errs.append(f"{path}: 身份取值不合法 {meta.get('身份')}")
     if meta.get("品评") not in 品评:
         errs.append(f"{path}: 品评取值不合法 {meta.get('品评')}")
-    if meta.get("品评依据类型") not in 依据类型:
-        errs.append(f"{path}: 品评依据类型不合法 {meta.get('品评依据类型')}")
-    for i, ref in enumerate(meta.get("品评依据") or []):
-        m = REF.match(ref.strip())
-        if not m:
-            errs.append(f"{path}: 品评依据第{i+1}条格式错误")
-        else:
-            check_quote(m, f"{path} 品评依据{i+1}", errs)
+    t = meta.get("品评依据类型")
+    if t not in 依据类型:
+        errs.append(f"{path}: 品评依据类型不合法 {t}")
+    if t == "无" and meta.get("品评") != "普通":
+        errs.append(f"{path}: 依据类型为“无”时品评只能是普通")
+    if t != "无" and not meta.get("品评依据"):
+        errs.append(f"{path}: 缺少品评依据")
+    lz = meta.get("类传")
+    if lz:
+        if lz not in LEIZHUAN:
+            errs.append(f"{path}: 类传 {lz} 不在 scripts/leizhuan.tsv 中")
+        elif t != "类传归属":
+            errs.append(f"{path}: 有类传时品评依据类型应为“类传归属”")
+        elif meta.get("品评") != LEIZHUAN[lz] and "改判" not in (meta.get("备注") or ""):
+            errs.append(f"{path}: 类传 {lz} 默认品评为 {LEIZHUAN[lz]}，若改判须在备注中写“改判”及理由")
+    if t == "行事推断" and not meta.get("推断理由"):
+        errs.append(f"{path}: 品评依据类型为“行事推断”时必须填写“推断理由”")
     n = 0
-    for ln_no, line in enumerate(body.splitlines(), 1):
+    for no, line in enumerate(body.splitlines(), 1):
         s = line.strip()
         if not s or s.startswith("#"):
             continue
-        m = QUOTE.match(s)
-        if not m:
-            errs.append(f"{path} 正文第{ln_no}行: 不是引文行（正文只能放原文）")
+        if not s.startswith(">"):
+            errs.append(f"{path} 正文第{no}行: 不是定位符行（正文只能放原文）")
             continue
         n += 1
-        check_quote(m, f"{path} 正文第{ln_no}行", errs)
+        check(s[1:].strip(), f"{path} 正文第{no}行", errs)
     if n == 0:
         errs.append(f"{path}: 正文没有引文")
+
+
+def verify_file(path):
+    errs = []
+    raw = path.read_text(encoding="utf-8")
+    if not raw.startswith("---\n"):
+        return [f"{path}: 缺少 YAML 头"]
+    _, head, body = raw.split("---\n", 2)
+    meta = yaml.safe_load(head)
+    for r in refs_in(meta):
+        check(r, f"{path} YAML", errs)
+    if "人物" in path.parts:
+        verify_person(path, meta, body, errs)
+    if "家族" in path.parts:
+        for mem in meta.get("成员") or []:
+            if mem.get("id") not in KNOWN_IDS:
+                errs.append(f"{path}: 成员 {mem.get('姓名')} 的编号 {mem.get('id')} 不在任何人物表中")
+            elif KNOWN_IDS[mem["id"]] != mem.get("姓名"):
+                errs.append(f"{path}: 编号 {mem['id']} 在人物表中是 {KNOWN_IDS[mem['id']]}，不是 {mem.get('姓名')}")
+    for no, line in enumerate(body.splitlines(), 1):
+        s = line.strip()
+        if "家族" in path.parts and s and not s.startswith(("#", ">")):
+            errs.append(f"{path} 正文第{no}行: 不是定位符行")
+        elif "家族" in path.parts and s.startswith(">"):
+            check(s[1:].strip(), f"{path} 正文第{no}行", errs)
     return errs
 
 
 def main(args):
-    targets = [Path(a) for a in args] or [ROOT / "人物"]
+    targets = [Path(a) for a in args] or [ROOT / "人物", ROOT / "家族"]
     files = []
     for t in targets:
-        files += sorted(t.rglob("*.md")) if t.is_dir() else [t]
-    files = [f for f in files if not f.name.startswith(("README", "_"))]
-    all_errs = []
-    for f in files:
-        all_errs += verify_file(f)
-    for e in all_errs:
-        print(e)
-    print(f"校验 {len(files)} 个文件，错误 {len(all_errs)} 处")
-    return 1 if all_errs else 0
+        if t.is_dir():
+            files += sorted(p for p in t.rglob("*.md") if not p.name.startswith(("_", "README")))
+        elif t.exists():
+            files.append(t)
+    errs = [e for f in files for e in verify_file(f)]
+    print("\n".join(errs + [f"校验 {len(files)} 个文件，错误 {len(errs)} 处"]))
+    return 1 if errs else 0
 
 
 if __name__ == "__main__":

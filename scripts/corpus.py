@@ -6,18 +6,47 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ROOT / "sources"
 
 
+_NUM = {"〇": 0, "零": 0, "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+        "六": 6, "七": 7, "八": 8, "九": 9}
+
+
+def cn2int(s: str) -> int:
+    total, cur = 0, 0
+    for ch in s:
+        if ch in _NUM:
+            cur = _NUM[ch]
+        elif ch == "十":
+            total += (cur or 1) * 10; cur = 0
+        elif ch == "百":
+            total += (cur or 1) * 100; cur = 0
+    return total + cur
+
+
+def juan_key(stem: str) -> str:
+    """文件名 007 / 001上 → 卷标记 7 / 1上"""
+    return str(int(stem[:3])) + stem[3:]
+
+
+def juan_file(book: str, juan: str) -> Path:
+    m = re.match(r"(\d+)(.*)", str(juan))
+    return SOURCES / book / f"{int(m[1]):03d}{m[2]}.md"
+
+
+def _read(f: Path):
+    lines = f.read_text(encoding="utf-8").splitlines()
+    title = lines[0].lstrip("# ").strip()
+    # 段落 = 去掉标题后的非空行；去掉 markdown 引用符（史记论赞以 "> " 开头）
+    paras = [re.sub(r"^>\s*", "", l).strip() for l in lines[1:] if l.strip()]
+    return title, paras
+
+
 def juan_list(book: str):
-    """返回 [(卷号int, 篇名, 正文)]。"""
-    out = []
-    for f in sorted((SOURCES / book).glob("[0-9]*.md")):
-        lines = f.read_text(encoding="utf-8").splitlines()
-        title = lines[0].lstrip("# ").strip()
-        out.append((int(f.stem), title, "\n".join(lines[1:])))
-    return out
+    """返回 [(卷标记str, 篇名, [段落...])]，段落从 1 起编号（列表下标 +1）。"""
+    return [(juan_key(f.stem), *_read(f)) for f in sorted((SOURCES / book).glob("[0-9]*.md"))]
 
 
-def juan_text(book: str, n: int) -> str:
-    return (SOURCES / book / f"{n:03d}.md").read_text(encoding="utf-8")
+def juan_paras(book: str, juan: str):
+    return _read(juan_file(book, juan))[1]
 
 
 def norm(s: str) -> str:
