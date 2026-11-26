@@ -4,7 +4,7 @@
 例:    史記·7·9｜陳嬰者，故東陽…稱為長者。
        漢書·31·1｜范增
 
-- 書名：books.tsv 中的简体或繁体书名
+- 書名：books.tsv 中的书名（写简体；繁体书名也能识别，以兼容旧文件）
 - 卷：卷标记，如 7、1上、27中之下
 - 段：该卷的第几段（非空行，从 1 起）。底本分段有误、一句话被断在两段时，可写 31-32（最多跨 3 段，按无缝连接展开）
 - 起…止：起始几字与结束几字，中间用一个“…”分隔，展开为两者之间（含）的原文。
@@ -45,7 +45,7 @@ def resolve(s: str):
     """返回 (原文, 元信息dict)。出错抛 RefError。"""
     info, juan, pn, body = parse(s)
     try:
-        paras = _paras(info["name"], juan)
+        paras = _paras(info.get("dir", info["name"]), juan)
     except FileNotFoundError:
         raise RefError(f"找不到底本 {info['name']} 卷{juan}（先运行 scripts/fetch_sources.sh）")
     lo, hi = pn if isinstance(pn, tuple) else (pn, pn)
@@ -67,14 +67,14 @@ def resolve(s: str):
         if body not in p:
             raise RefError(f"原文不在该段中: {body[:30]}")
         text = body
-    meta = {"book": info["fan"], "name": info["name"], "juan": juan, "para": pn}
+    meta = {"book": info["name"], "name": info.get("dir", info["name"]), "juan": juan, "para": pn}
     return text, meta
 
 
-def make(book_fan: str, juan: str, pn, para: str, text: str, full_max=40, min_len=8):
+def make(book: str, juan: str, pn, para: str, text: str, full_max=40, min_len=8):
     """为段 para 中的一段原文 text 生成最短的定位符。pn 可为 int 或 (起, 止)。"""
     ps = f"{pn[0]}-{pn[1]}" if isinstance(pn, tuple) else pn
-    head = f"{book_fan}·{juan}·{ps}｜"
+    head = f"{book}·{juan}·{ps}｜"
     if len(text) <= full_max:
         return head + text
     i0 = para.find(text)

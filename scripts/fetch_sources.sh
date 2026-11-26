@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 按 scripts/dibens.tsv 获取主底本（含补卷）到 sources/<书名>/。
+# 按 scripts/dibens.tsv 获取主底本（含补卷），转为简体工作文本放到 sources/<书名>/（繁体原本在 sources/_繁/）。
 # 用法: scripts/fetch_sources.sh              获取 已用书目（被传记引用到的书，见 scripts/used_books.txt）
 #       scripts/fetch_sources.sh 全部         获取全部 25 部
 #       scripts/fetch_sources.sh 宋史 明史    获取指定的书
@@ -37,4 +37,5 @@ for b in "${BOOKS[@]}"; do
   if [ -n "$extra" ]; then
     IFS=: read -r _ w rng <<< "$extra"; wiki "$w" "$b" "$rng"
   fi
+  python3 -I scripts/jianti.py "$b"     # 转简体；繁体保留在 sources/_繁/
 done

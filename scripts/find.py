@@ -37,5 +37,5 @@ for bk in books:
         for pn, p in enumerate(paras, 1):
             for m in pat.finditer(p):
                 s, e = max(0, m.start() - a.ctx), min(len(p), m.end() + a.ctx)
-                print(f"{info['fan']}·{j}·{pn} 〔{title}〕 …{p[s:e]}…"); total += 1
+                print(f"{info['name']}·{j}·{pn} 〔{title}〕 …{p[s:e]}…"); total += 1
 print(f"共 {total} 处", file=sys.stderr)

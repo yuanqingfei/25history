@@ -15,7 +15,7 @@ for f in sorted((ROOT / "人物").rglob("*.md")):
     for line in body.splitlines():
         if line.startswith(">"):
             info, juan, pn, _ = parse(parse_line(line)[0])
-            idx[(info["fan"], juan, pn if isinstance(pn, int) else pn[0])].add(f"{meta['id']} {meta['姓名']}")
+            idx[(info["name"], juan, pn if isinstance(pn, int) else pn[0])].add(f"{meta['id']} {meta['姓名']}")
 def key(k):
     import re
     m = re.match(r"(\d+)(.*)", k[1]); return (k[0], int(m[1]), m[2], k[2])

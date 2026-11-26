@@ -53,7 +53,7 @@ def main(books):
         books = sorted({k[0] for k in cites})
     for name in books:
         info = BOOKS[name]
-        d = OUT / info["fan"]
+        d = OUT / info["name"]
         d.mkdir(parents=True, exist_ok=True)
         prov = {}
         pv = SOURCES / name / "来源.tsv"
@@ -67,10 +67,10 @@ def main(books):
                 for ln in pf.read_text(encoding="utf-8").splitlines():
                     k, _, v = ln.partition("\t")
                     pages[int(k)] = v
-            lines = [f"# {info['fan']}·卷{juan}　{title}", "",
+            lines = [f"# {info['name']}·卷{juan}　{title}", "",
                      f"底本：{src_note(prov.get(juan_file(juan)[:-3]))}。段号即定位符中的“段”。授权与改动说明见 [原文/README.md](../README.md)。", ""]
             for k, p in enumerate(paras, 1):
-                pg = f"　<sub>中華本頁 {pages[k]}</sub>" if pages.get(k) else ""
+                pg = f"　<sub>中华本页 {pages[k]}</sub>" if pages.get(k) else ""
                 lines.append(f'<a id="p{k}"></a>**〔{k}〕**{pg}　{p}')
                 who = cites.get((name, juan, k))
                 if who:
@@ -78,7 +78,7 @@ def main(books):
                     lines.append(f"\n> 引用此段：{links}")
                 lines.append("")
             (d / juan_file(juan)).write_text("\n".join(lines), encoding="utf-8")
-        print(f"原文/{info['fan']}：{len(juan_list(name))} 卷")
+        print(f"原文/{info['name']}：{len(juan_list(name))} 卷")
 
 
 if __name__ == "__main__":
