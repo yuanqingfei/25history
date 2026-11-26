@@ -10,6 +10,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent))
 from corpus import ROOT
 from refs import resolve, RefError, REF
+from reanchor import LINK, url_for
 
 REQUIRED = ["id", "姓名", "身份", "品评", "品评依据类型", "出现卷", "校对状态"]
 身份 = {"帝王", "国王", "后妃", "宗室", "臣属", "将领", "士民", "妇女", "四夷", "方外", "其他"}
@@ -49,6 +50,27 @@ def check(ref, where, errs):
         errs.append(f"{where}: {e}")
 
 
+def check_body_line(path, s, where, errs):
+    """正文行必须是 > [定位符](指向原文段落的链接)，且链接与定位符一致。"""
+    inner = s[1:].strip()
+    m = LINK.match(inner)
+    if not m:
+        errs.append(f"{where}: 定位符没有链接（运行 scripts/reanchor.py 自动加上）")
+        check(inner, where, errs)
+        return
+    check(m["loc"], where, errs)
+    try:
+        _, meta = resolve(m["loc"])
+        pn = meta["para"]
+        expect = url_for(path.resolve(), meta, pn[0] if isinstance(pn, tuple) else pn)
+        if m["url"] != expect:
+            errs.append(f"{where}: 链接应为 {expect}")
+        elif not (path.resolve().parent / expect.split("#")[0]).exists():
+            errs.append(f"{where}: 链接目标不存在（运行 scripts/build_yuanwen.py 生成 原文/）")
+    except RefError:
+        pass
+
+
 def verify_person(path, meta, body, errs):
     for k in REQUIRED:
         if k not in meta:
@@ -83,7 +105,7 @@ def verify_person(path, meta, body, errs):
             errs.append(f"{path} 正文第{no}行: 不是定位符行（正文只能放原文）")
             continue
         n += 1
-        check(s[1:].strip(), f"{path} 正文第{no}行", errs)
+        check_body_line(path, s, f"{path} 正文第{no}行", errs)
     if n == 0:
         errs.append(f"{path}: 正文没有引文")
 
@@ -110,7 +132,7 @@ def verify_file(path):
         if "家族" in path.parts and s and not s.startswith(("#", ">")):
             errs.append(f"{path} 正文第{no}行: 不是定位符行")
         elif "家族" in path.parts and s.startswith(">"):
-            check(s[1:].strip(), f"{path} 正文第{no}行", errs)
+            check_body_line(path, s, f"{path} 正文第{no}行", errs)
     return errs
 
 

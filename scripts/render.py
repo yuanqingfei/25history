@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from corpus import ROOT, juan_list
 from refs import resolve
+from reanchor import LINK
 
 TITLES = {}
 def title(name, juan):
@@ -20,7 +21,9 @@ def render(path: Path) -> str:
     for line in body.splitlines():
         s = line.strip()
         if s.startswith(">"):
-            text, m = resolve(s[1:].strip())
+            inner = s[1:].strip()
+            lm = LINK.match(inner)
+            text, m = resolve(lm["loc"] if lm else inner)
             out.append(f"{text}〔{m['book']}·卷{m['juan']}·{title(m['name'], m['juan'])}〕")
         else:
             out.append(line)

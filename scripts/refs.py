@@ -6,7 +6,7 @@
 
 - 書名：books.tsv 中的简体或繁体书名
 - 卷：卷标记，如 7、1上、27中之下
-- 段：该卷的第几段（非空行，从 1 起）
+- 段：该卷的第几段（非空行，从 1 起）。底本分段有误、一句话被断在两段时，可写 31-32（最多跨 3 段，按无缝连接展开）
 - 起…止：起始几字与结束几字，中间用一个“…”分隔，展开为两者之间（含）的原文。
   起始字串在该段中必须唯一；结束字串取起始之后的第一次出现。
 - 没有“…”时，竖线后的文字就是全文，必须在该段中出现。
@@ -15,7 +15,7 @@ import re
 from functools import lru_cache
 from corpus import load_books, juan_paras
 
-REF = re.compile(r"^(?P<book>[^·｜\s]+)·(?P<juan>\d+[^·｜]*)·(?P<para>\d+)｜(?P<body>.+)$")
+REF = re.compile(r"^(?P<book>[^·｜\s]+)·(?P<juan>\d+[^·｜]*)·(?P<para>\d+(?:-\d+)?)｜(?P<body>.+)$")
 SEP = "…"
 BOOKS = load_books()
 
@@ -36,7 +36,9 @@ def parse(s: str):
     info = BOOKS.get(m["book"])
     if not info:
         raise RefError(f"未知书名: {m['book']}")
-    return info, m["juan"], int(m["para"]), m["body"]
+    a, _, b = m["para"].partition("-")
+    pn = (int(a), int(b)) if b else int(a)
+    return info, m["juan"], pn, m["body"]
 
 
 def resolve(s: str):
@@ -46,9 +48,10 @@ def resolve(s: str):
         paras = _paras(info["name"], juan)
     except FileNotFoundError:
         raise RefError(f"找不到底本 {info['name']} 卷{juan}（先运行 scripts/fetch_sources.sh）")
-    if not 1 <= pn <= len(paras):
-        raise RefError(f"{info['name']}卷{juan} 没有第{pn}段")
-    p = paras[pn - 1]
+    lo, hi = pn if isinstance(pn, tuple) else (pn, pn)
+    if not (1 <= lo <= hi <= len(paras)) or (isinstance(pn, tuple) and hi - lo > 2):
+        raise RefError(f"{info['name']}卷{juan} 段号 {pn} 不存在（跨段最多 3 段）")
+    p = "".join(paras[lo - 1:hi])
     if body.count(SEP) > 1:
         raise RefError(f"一个定位符只能有一个“{SEP}”: {body[:30]}")
     if SEP in body:
@@ -68,9 +71,10 @@ def resolve(s: str):
     return text, meta
 
 
-def make(book_fan: str, juan: str, pn: int, para: str, text: str, full_max=40, min_len=8):
-    """为段 para 中的一段原文 text 生成最短的定位符。"""
-    head = f"{book_fan}·{juan}·{pn}｜"
+def make(book_fan: str, juan: str, pn, para: str, text: str, full_max=40, min_len=8):
+    """为段 para 中的一段原文 text 生成最短的定位符。pn 可为 int 或 (起, 止)。"""
+    ps = f"{pn[0]}-{pn[1]}" if isinstance(pn, tuple) else pn
+    head = f"{book_fan}·{juan}·{ps}｜"
     if len(text) <= full_max:
         return head + text
     i0 = para.find(text)
