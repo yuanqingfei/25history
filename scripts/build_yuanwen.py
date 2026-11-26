@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from corpus import ROOT, SOURCES, juan_list, load_books
 from refs import parse
+from bodyline import parse_line
 
 BOOKS = load_books()
 OUT = ROOT / "原文"
@@ -15,31 +16,22 @@ OUT = ROOT / "原文"
 def citations():
     """{(书简体名, 卷, 段): [(人物文件, id, 姓名)]}"""
     idx = collections.defaultdict(list)
-    for f in sorted((ROOT / "人物").rglob("*.md")):
+    for f in sorted([*(ROOT / "人物").rglob("*.md"), *(ROOT / "家族").rglob("*.md")]):
         if f.name.startswith("_"):
             continue
         _, head, body = f.read_text(encoding="utf-8").split("---\n", 2)
         meta = yaml.safe_load(head)
         for line in body.splitlines():
-            loc = loc_of_line(line)
-            if loc:
+            r = parse_line(line)
+            if r:
+                loc = r[0]
                 info, juan, pn, _ = parse(loc)
                 lo, hi = pn if isinstance(pn, tuple) else (pn, pn)
                 for k in range(lo, hi + 1):
-                    if (f, meta["id"], meta["姓名"]) not in idx[(info["name"], juan, k)]:
-                        idx[(info["name"], juan, k)].append((f, meta["id"], meta["姓名"]))
+                    who = (f, meta.get("id", ""), meta.get("姓名") or f"{meta.get('家族')}（家族）")
+                    if who not in idx[(info["name"], juan, k)]:
+                        idx[(info["name"], juan, k)].append(who)
     return idx
-
-
-LINK = re.compile(r"^>\s*\[(?P<loc>.+)\]\((?P<url>[^)]+)\)\s*$")
-
-
-def loc_of_line(line):
-    s = line.strip()
-    if not s.startswith(">"):
-        return None
-    m = LINK.match(s)
-    return m["loc"] if m else s[1:].strip()
 
 
 def juan_file(juan: str) -> str:

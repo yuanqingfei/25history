@@ -4,7 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from corpus import ROOT
 from refs import parse
-from reanchor import LINK
+from bodyline import parse_line
 
 idx = collections.defaultdict(set)
 for f in sorted((ROOT / "人物").rglob("*.md")):
@@ -14,8 +14,7 @@ for f in sorted((ROOT / "人物").rglob("*.md")):
     meta = yaml.safe_load(head)
     for line in body.splitlines():
         if line.startswith(">"):
-            inner = line[1:].strip(); lm = LINK.match(inner)
-            info, juan, pn, _ = parse(lm["loc"] if lm else inner)
+            info, juan, pn, _ = parse(parse_line(line)[0])
             idx[(info["fan"], juan, pn if isinstance(pn, int) else pn[0])].add(f"{meta['id']} {meta['姓名']}")
 def key(k):
     import re

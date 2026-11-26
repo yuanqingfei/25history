@@ -10,7 +10,8 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent))
 from corpus import ROOT
 from refs import resolve, RefError, REF
-from reanchor import LINK, url_for
+from bodyline import parse_line, format_line, citation_map, is_shared
+CM = citation_map()
 
 REQUIRED = ["id", "姓名", "身份", "品评", "品评依据类型", "出现卷", "校对状态"]
 身份 = {"帝王", "国王", "后妃", "宗室", "臣属", "将领", "士民", "妇女", "四夷", "方外", "其他"}
@@ -51,24 +52,18 @@ def check(ref, where, errs):
 
 
 def check_body_line(path, s, where, errs):
-    """正文行必须是 > [定位符](指向原文段落的链接)，且链接与定位符一致。"""
-    inner = s[1:].strip()
-    m = LINK.match(inner)
-    if not m:
-        errs.append(f"{where}: 定位符没有链接（运行 scripts/reanchor.py 自动加上）")
-        check(inner, where, errs)
-        return
-    check(m["loc"], where, errs)
+    """引文行必须是规范写法（独用段落写原文，共享段落写定位符），且链接正确。"""
+    loc, url, form = parse_line(s)
+    check(loc, where, errs)
     try:
-        _, meta = resolve(m["loc"])
-        pn = meta["para"]
-        expect = url_for(path.resolve(), meta, pn[0] if isinstance(pn, tuple) else pn)
-        if m["url"] != expect:
-            errs.append(f"{where}: 链接应为 {expect}")
-        elif not (path.resolve().parent / expect.split("#")[0]).exists():
-            errs.append(f"{where}: 链接目标不存在（运行 scripts/build_yuanwen.py 生成 原文/）")
+        expect = format_line(path, loc, CM)
     except RefError:
-        pass
+        return
+    if s.strip() != expect:
+        kind = "共享引文应写定位符" if is_shared(loc, CM, path) else "独用引文应直接写原文"
+        errs.append(f"{where}: 写法不规范（{kind}；运行 scripts/reanchor.py 自动修正）")
+    elif not (path.resolve().parent / url.split("#")[0]).exists():
+        errs.append(f"{where}: 链接目标不存在（运行 scripts/build_yuanwen.py 生成 原文/）")
 
 
 def verify_person(path, meta, body, errs):
@@ -102,7 +97,7 @@ def verify_person(path, meta, body, errs):
         if not s or s.startswith("#"):
             continue
         if not s.startswith(">"):
-            errs.append(f"{path} 正文第{no}行: 不是定位符行（正文只能放原文）")
+            errs.append(f"{path} 正文第{no}行: 不是引文行（正文只能放原文）")
             continue
         n += 1
         check_body_line(path, s, f"{path} 正文第{no}行", errs)

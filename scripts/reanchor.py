@@ -1,53 +1,41 @@
-"""规范化文件中的全部定位符：
-- 按当前规则重新生成最短锚点（展开后的原文不变）；
-- 正文中的定位符写成指向 原文/ 对应段落的链接：> [書·卷·段｜起…止](../../原文/書/NNN.md#pN)
-- YAML 中的定位符保持纯文本。
-用法: python3 scripts/reanchor.py 文件...
+"""规范化全部人物与家族文件中的引文：
+- 正文：独用段落写原文全文＋出处链接；共享段落写定位符链接（见 scripts/bodyline.py）。
+  是否共享按全部文件统计，所以每次都处理全部文件。
+- YAML：定位符保持纯文本，按当前规则重算最短锚点。
+用法: python3 scripts/reanchor.py
 """
-import os, re, sys
+import re, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
-from corpus import ROOT
 from refs import resolve, make, _paras, REF
+from bodyline import parse_line, format_line, citation_map, all_files
 
-LINK = re.compile(r"^\[(?P<loc>.+)\]\((?P<url>[^)]+)\)$")
 
-
-def norm_loc(loc):
+def short(loc):
     t, meta = resolve(loc)
     pn = meta["para"]
     lo, hi = pn if isinstance(pn, tuple) else (pn, pn)
-    return make(meta["book"], meta["juan"], pn, "".join(_paras(meta["name"], meta["juan"])[lo - 1:hi]), t), meta, lo
+    return make(meta["book"], meta["juan"], pn, "".join(_paras(meta["name"], meta["juan"])[lo - 1:hi]), t)
 
 
-def url_for(path: Path, meta, lo):
-    m = re.match(r"(\d+)(.*)", meta["juan"])
-    target = ROOT / "原文" / meta["book"] / f"{int(m[1]):03d}{m[2]}.md"
-    return os.path.relpath(target, path.parent).replace(os.sep, "/") + f"#p{lo}"
-
-
-def link_line(path, s):
-    """'> loc' 或 '> [loc](url)' → 规范化的链接形式"""
-    inner = s[1:].strip()
-    m = LINK.match(inner)
-    loc = m["loc"] if m else inner
-    new, meta, lo = norm_loc(loc)
-    return f"> [{new}]({url_for(path, meta, lo)})"
-
-
-def process(path: Path):
-    raw = path.read_text(encoding="utf-8")
-    _, head, body = raw.split("---\n", 2)
+def process(path: Path, cm):
+    _, head, body = path.read_text(encoding="utf-8").split("---\n", 2)
     hl = []
     for line in head.split("\n"):
         m = re.match(r"^(\s*-\s+|\s*[^:\s][^:]*:\s+)(.+)$", line)
         if m and REF.match(m[2].strip()):
-            line = m[1] + norm_loc(m[2].strip())[0]
+            line = m[1] + short(m[2].strip())
         hl.append(line)
-    bl = [link_line(path, l.strip()) if l.strip().startswith(">") else l for l in body.split("\n")]
+    bl = []
+    for line in body.split("\n"):
+        r = parse_line(line)
+        bl.append(format_line(path, r[0], cm) if r else line)
     path.write_text("---\n" + "\n".join(hl) + "---\n" + "\n".join(bl), encoding="utf-8")
 
 
 if __name__ == "__main__":
-    for f in sys.argv[1:]:
-        process(Path(f).resolve())
+    files = all_files()
+    cm = citation_map(files)
+    for f in files:
+        process(f, cm)
+    print(f"规范化 {len(files)} 个文件")
