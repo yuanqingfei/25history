@@ -48,9 +48,16 @@ def juan_file(juan: str) -> str:
 
 
 def main(books):
+    """被引用的书都生成；已用书目（scripts/used_books.txt，即有人物首见于此的书）生成全书，其余只生成被引用到的卷。"""
     cites = citations()
+    full = set((ROOT / "scripts" / "used_books.txt").read_text(encoding="utf-8").split())
+    cited_juan = {(k[0], k[1]) for k in cites}
     if not books:
-        books = sorted({k[0] for k in cites})
+        books = sorted({k[0] for k in cites} | full)
+    import shutil
+    for d in OUT.iterdir():
+        if d.is_dir():
+            shutil.rmtree(d)
     for name in books:
         info = BOOKS[name]
         d = OUT / info["name"]
@@ -61,6 +68,8 @@ def main(books):
             c = ln.split("\t")
             prov[c[0]] = c
         for juan, title, paras in juan_list(name):
+            if name not in full and (name, juan) not in cited_juan:
+                continue
             pages = {}
             pf = SOURCES / name / juan_file(juan).replace(".md", ".pages.tsv")
             if pf.exists():
@@ -78,7 +87,7 @@ def main(books):
                     lines.append(f"\n> 引用此段：{links}")
                 lines.append("")
             (d / juan_file(juan)).write_text("\n".join(lines), encoding="utf-8")
-        print(f"原文/{info['name']}：{len(juan_list(name))} 卷")
+        print(f"原文/{info['name']}：{len(list(d.glob('*.md')))} 卷")
 
 
 if __name__ == "__main__":
