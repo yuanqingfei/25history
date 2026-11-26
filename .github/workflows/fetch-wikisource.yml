@@ -1,0 +1,43 @@
+name: 下载维基文库底本
+
+on:
+  workflow_dispatch:
+    inputs:
+      books:
+        description: 要下载的书（维基文库页面名，逗号分隔）
+        default: 周書,宋史,明史,清史稿,舊唐書,新唐書,元史
+        required: true
+      only:
+        description: 只下载部分卷（書名:起-止，逗号分隔；留空为全部）
+        default: 舊唐書:191-200,新唐書:188-225,元史:201-210
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fetch-wikisource
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests beautifulsoup4
+      - name: 下载
+        run: |
+          python scripts/fetch_wikisource.py --books "${{ inputs.books }}" --only "${{ inputs.only }}"
+      - name: 提交
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 底本/维基文库
+          if git diff --cached --quiet; then echo "没有新内容"; exit 0; fi
+          git commit -m "维基文库底本：${{ inputs.books }}"
+          git pull --rebase
+          git push
