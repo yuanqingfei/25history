@@ -30,19 +30,22 @@ def process(path: Path, cm, ctx):
             line = m[1] + short(m[2].strip())
         hl.append(line)
     meta = yaml.safe_load("\n".join(hl))
-    # 互见：旧文件在 YAML 里，迁到正文末尾的“## 互见”一节（竖排、可点击）
-    hx = [str(x) for x in (meta.pop("互见", None) or [])]
-    if hx:
-        hl = [l for l in yaml_without(hl, "互见")]
-    body, hx_body = split_huxian(body)
-    hx = hx_body + [x for x in hx if x not in hx_body]
+    # 品评依据、互见：旧文件在 YAML 里，迁到正文末尾的列表节（竖排、可点击）
+    lists = {}
+    for name in LIST_SECTIONS:
+        old = [str(x) for x in (meta.pop(name, None) or [])]
+        if old:
+            hl = yaml_without(hl, name)
+        body, cur = split_section(body, name)
+        lists[name] = cur + [x for x in old if x not in cur]
     bl = []
     for line in body.split("\n"):
         r = parse_line(line)
         bl.append(format_line(path, r[0], cm) if r else line)
     body = "\n".join(bl).rstrip("\n") + "\n"
-    if hx:
-        body += "\n## 互见\n\n" + "\n".join(huxian_line(path, x) for x in hx) + "\n"
+    for name in LIST_SECTIONS:
+        if lists[name]:
+            body += f"\n## {name}\n\n" + "\n".join(section_line(path, name, x) for x in lists[name]) + "\n"
     if "人物" in path.parts:
         body = insert_block(body, info_block(path, meta, ctx["fams"]))
     elif "家族" in path.parts:
@@ -50,13 +53,25 @@ def process(path: Path, cm, ctx):
     path.write_text("---\n" + "\n".join(hl) + "---\n" + body, encoding="utf-8")
 
 
-HX_HEAD = re.compile(r"^## 互见\s*$", re.M)
-HX_ITEM = re.compile(r"^-\s*(?:\[(?P<loc>[^\]]+)\]\([^)]*\)|(?P<plain>\S.*))\s*$")
+HX_ITEM = re.compile(r"^-\s*(?:\[(?P<loc>[^\]]+)\]\([^)]*\)|(?P<text>.+)〔\[(?P<ref>[^\]｜]+)\]\([^)]*\)〕|(?P<plain>\S.*))\s*$")
+LIST_SECTIONS = ["品评依据", "互见"]          # 正文末尾的列表节，按此顺序排列
+
+
+def item_loc(m):
+    if m["loc"]:
+        return m["loc"].strip()
+    if m["ref"]:
+        return f"{m['ref']}｜{m['text']}"
+    return m["plain"].strip()
 
 
 def split_huxian(body):
-    """把正文中的“## 互见”一节拆出来，返回 (其余正文, [定位符])。"""
-    m = HX_HEAD.search(body)
+    return split_section(body, "互见")
+
+
+def split_section(body, name):
+    """把正文中的“## <name>”一节拆出来，返回 (其余正文, [定位符])。"""
+    m = re.compile(rf"^## {name}\s*$", re.M).search(body)
     if not m:
         return body, []
     rest = body[m.end():]
@@ -66,8 +81,22 @@ def split_huxian(body):
     for line in sec.splitlines():
         mm = HX_ITEM.match(line.strip())
         if mm:
-            locs.append((mm["loc"] or mm["plain"]).strip())
+            locs.append(item_loc(mm))
     return body[:m.start()].rstrip("\n") + "\n" + after, locs
+
+
+def pingping_line(path, loc):
+    """品评依据：显示原文全文＋出处链接。"""
+    from bodyline import url_for
+    t, meta = resolve(loc)
+    pn = meta["para"]
+    lo, hi = pn if isinstance(pn, tuple) else (pn, pn)
+    ps = f"{lo}-{hi}" if hi > lo else f"{lo}"
+    return f"- {t}〔[{meta['book']}·{meta['juan']}·{ps}]({url_for(path, meta, lo)})〕"
+
+
+def section_line(path, name, loc):
+    return pingping_line(path, loc) if name == "品评依据" else huxian_line(path, loc)
 
 
 def huxian_line(path, loc):

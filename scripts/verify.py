@@ -66,18 +66,18 @@ def check_body_line(path, s, where, errs):
         errs.append(f"{where}: 链接目标不存在（运行 scripts/build_yuanwen.py 生成 原文/）")
 
 
-def check_huxian_line(path, s, where, errs):
-    from reanchor import HX_ITEM, huxian_line
+def check_huxian_line(path, s, where, errs, name="互见"):
+    from reanchor import HX_ITEM, section_line, item_loc
     m = HX_ITEM.match(s)
     if not m:
-        errs.append(f"{where}: 互见只能是“- 定位符”列表项"); return
-    loc = (m["loc"] or m["plain"]).strip()
+        errs.append(f"{where}: {name}只能是“- 引文”列表项"); return
+    loc = item_loc(m)
     check(loc, where, errs)
     try:
-        expect = huxian_line(path, loc)
+        expect = section_line(path, name, loc)
         if s != expect:
             errs.append(f"{where}: 写法不规范（运行 scripts/reanchor.py 自动修正）")
-        elif not (path.resolve().parent / expect.split("](")[1].split("#")[0]).exists():
+        elif not (path.resolve().parent / expect.split("](")[-1].split("#")[0]).exists():
             errs.append(f"{where}: 链接目标不存在（运行 scripts/build_yuanwen.py 生成 原文/）")
     except RefError:
         pass
@@ -96,8 +96,9 @@ def verify_person(path, meta, body, errs):
         errs.append(f"{path}: 品评依据类型不合法 {t}")
     if t == "无" and meta.get("品评") != "普通":
         errs.append(f"{path}: 依据类型为“无”时品评只能是普通")
-    if t != "无" and not meta.get("品评依据"):
-        errs.append(f"{path}: 缺少品评依据")
+    from reanchor import split_section
+    if t != "无" and not split_section(body, "品评依据")[1]:
+        errs.append(f"{path}: 缺少品评依据（正文末尾“## 品评依据”一节）")
     lz = meta.get("类传")
     if lz:
         if lz not in LEIZHUAN:
@@ -113,12 +114,12 @@ def verify_person(path, meta, body, errs):
     for no, line in enumerate(body.splitlines(), 1):
         s = line.strip()
         if s.startswith("#"):
-            in_hx = s.startswith("## 互见")
+            in_hx = next((n for n in ("互见", "品评依据") if s.startswith(f"## {n}")), False)
             continue
         if not s:
             continue
         if in_hx:
-            check_huxian_line(path, s, f"{path} 互见第{no}行", errs)
+            check_huxian_line(path, s, f"{path} {in_hx}第{no}行", errs, in_hx)
             continue
         if not s.startswith(">"):
             errs.append(f"{path} 正文第{no}行: 不是引文行（正文只能放原文）")

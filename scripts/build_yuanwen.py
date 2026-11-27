@@ -36,12 +36,13 @@ def citations():
 
 def huxian_juan():
     """互见链接到的卷也要生成（互见不列入“引用此段”）。"""
-    from reanchor import split_huxian
+    from reanchor import split_section
     out = set()
     for f in [*(ROOT / "人物").rglob("*.md"), *(ROOT / "家族").rglob("*.md")]:
         if f.name.startswith("_"):
             continue
-        for loc in split_huxian(f.read_text(encoding="utf-8").split("---\n", 2)[2])[1]:
+        body = f.read_text(encoding="utf-8").split("---\n", 2)[2]
+        for loc in split_section(body, "互见")[1] + split_section(body, "品评依据")[1]:
             info, juan, _, _ = parse(loc)
             out.add((info["name"], juan))
     return out
