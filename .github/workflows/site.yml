@@ -1,0 +1,51 @@
+name: 构建并发布网站
+
+on:
+  push:
+    branches: [main]
+    paths: ["人物/**", "家族/**", "scripts/**", "底本/**", ".github/workflows/site.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 安装依赖
+        run: pip install pyyaml opencc-python-reimplemented
+      - name: 获取底本（只取被引用到的书）
+        run: ./scripts/fetch_sources.sh $(python3 scripts/needed_books.py)
+      - name: 校验
+        run: python3 scripts/verify.py
+      - name: 生成网站
+        run: python3 scripts/build_site.py
+      - name: 生成搜索索引
+        run: npx -y pagefind@1 --site _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
