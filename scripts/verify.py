@@ -114,6 +114,12 @@ def verify_file(path):
     meta = yaml.safe_load(head)
     for r in refs_in(meta):
         check(r, f"{path} YAML", errs)
+    from infobox import BLOCK, info_block, family_block, insert_block
+    blk = BLOCK.search(body)
+    expect = info_block(path, meta) if "人物" in path.parts else family_block(path, meta)
+    if not blk or blk.group(0).rstrip("\n") != expect.rstrip("\n"):
+        errs.append(f"{path}: 自动生成区块（信息栏/世系图）缺失或过期，运行 scripts/reanchor.py")
+    body = BLOCK.sub("", body)
     if "人物" in path.parts:
         verify_person(path, meta, body, errs)
     if "家族" in path.parts:
@@ -124,7 +130,7 @@ def verify_file(path):
                 errs.append(f"{path}: 编号 {mem['id']} 在人物表中是 {KNOWN_IDS[mem['id']]}，不是 {mem.get('姓名')}")
     for no, line in enumerate(body.splitlines(), 1):
         s = line.strip()
-        if "家族" in path.parts and s and not s.startswith(("#", ">")):
+        if "家族" in path.parts and s and not s.startswith(("#", ">", "<!--")):
             errs.append(f"{path} 正文第{no}行: 不是定位符行")
         elif "家族" in path.parts and s.startswith(">"):
             check_body_line(path, s, f"{path} 正文第{no}行", errs)

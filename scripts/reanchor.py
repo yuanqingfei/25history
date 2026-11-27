@@ -9,6 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from refs import resolve, make, _paras, REF
 from bodyline import parse_line, format_line, citation_map, all_files
+from infobox import info_block, family_block, insert_block, strip_block, families, person_files, roster
+import yaml
 
 
 def short(loc):
@@ -18,8 +20,9 @@ def short(loc):
     return make(meta["book"], meta["juan"], pn, "".join(_paras(meta["name"], meta["juan"])[lo - 1:hi]), t)
 
 
-def process(path: Path, cm):
+def process(path: Path, cm, ctx):
     _, head, body = path.read_text(encoding="utf-8").split("---\n", 2)
+    body = strip_block(body)
     hl = []
     for line in head.split("\n"):
         m = re.match(r"^(\s*-\s+|\s*[^:\s][^:]*:\s+)(.+)$", line)
@@ -30,12 +33,19 @@ def process(path: Path, cm):
     for line in body.split("\n"):
         r = parse_line(line)
         bl.append(format_line(path, r[0], cm) if r else line)
-    path.write_text("---\n" + "\n".join(hl) + "---\n" + "\n".join(bl), encoding="utf-8")
+    body = "\n".join(bl)
+    meta = yaml.safe_load("\n".join(hl))
+    if "人物" in path.parts:
+        body = insert_block(body, info_block(path, meta, ctx["fams"]))
+    elif "家族" in path.parts:
+        body = insert_block(body, family_block(path, meta, ctx["pf"], ctx["names"]))
+    path.write_text("---\n" + "\n".join(hl) + "---\n" + body, encoding="utf-8")
 
 
 if __name__ == "__main__":
     files = all_files()
     cm = citation_map(files)
+    ctx = {"fams": families(), "pf": person_files(), "names": roster()}
     for f in files:
-        process(f, cm)
+        process(f, cm, ctx)
     print(f"规范化 {len(files)} 个文件")
