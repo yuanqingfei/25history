@@ -86,6 +86,8 @@ def html_to_paras(html):
     for el in root.find_all(["p", "dd", "h2", "h3", "h4", "div", "tr"]):
         if el.name == "div" and "poem" not in (el.get("class") or []):
             continue
+        if el.name != "tr" and el.find_parent("table") is not None:
+            continue          # 表格单元格里的段落已随整行输出，不再单独输出
         if el.name == "tr":
             cells = [c.get_text("", strip=True) for c in el.find_all(["td", "th"])]
             t = "｜".join(c for c in cells)
@@ -120,6 +122,9 @@ def main():
         if book in only:
             lo, hi = only[book]; juans = [j for j in juans if lo <= j[0] <= hi]
         print(f"{book}：子页面 {len(titles)} 个，其中卷页 {len(juans)} 个", flush=True)
+        if book in only:
+            print("  范围内的卷页：", [t for _, _, t in juans], flush=True)
+            print("  未识别为卷页的子页面：", [t for t in titles if not JUAN.search(t[len(book) + 1:])][:60], flush=True)
         if not juans:
             print("  未找到卷页，前 20 个子页面：", titles[:20], flush=True)
             continue
@@ -135,9 +140,14 @@ def main():
                              "https://zh.wikisource.org/wiki/" + title.replace(" ", "_")))
             print(f"  {label}\t{len(paras)} 段\t{sum(map(len, paras))} 字", flush=True)
             time.sleep(a.sleep)
-        with open(out / "manifest.tsv", "a", encoding="utf-8") as f:
-            for row in manifest:
-                f.write("\t".join(row) + "\n")
+        mf = out / "manifest.tsv"
+        old = {}
+        if mf.exists():
+            for ln in mf.read_text(encoding="utf-8").splitlines():
+                c = ln.split("\t"); old[c[1]] = c
+        for row in manifest:
+            old[row[1]] = list(row)
+        mf.write_text("".join("\t".join(r) + "\n" for _, r in sorted(old.items())), encoding="utf-8")
 
 
 if __name__ == "__main__":
