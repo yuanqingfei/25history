@@ -66,6 +66,23 @@ def check_body_line(path, s, where, errs):
         errs.append(f"{where}: 链接目标不存在（运行 scripts/build_yuanwen.py 生成 原文/）")
 
 
+def check_huxian_line(path, s, where, errs):
+    from reanchor import HX_ITEM, huxian_line
+    m = HX_ITEM.match(s)
+    if not m:
+        errs.append(f"{where}: 互见只能是“- 定位符”列表项"); return
+    loc = (m["loc"] or m["plain"]).strip()
+    check(loc, where, errs)
+    try:
+        expect = huxian_line(path, loc)
+        if s != expect:
+            errs.append(f"{where}: 写法不规范（运行 scripts/reanchor.py 自动修正）")
+        elif not (path.resolve().parent / expect.split("](")[1].split("#")[0]).exists():
+            errs.append(f"{where}: 链接目标不存在（运行 scripts/build_yuanwen.py 生成 原文/）")
+    except RefError:
+        pass
+
+
 def verify_person(path, meta, body, errs):
     for k in REQUIRED:
         if k not in meta:
@@ -92,9 +109,16 @@ def verify_person(path, meta, body, errs):
     if t == "行事推断" and not meta.get("推断理由"):
         errs.append(f"{path}: 品评依据类型为“行事推断”时必须填写“推断理由”")
     n = 0
+    in_hx = False
     for no, line in enumerate(body.splitlines(), 1):
         s = line.strip()
-        if not s or s.startswith("#"):
+        if s.startswith("#"):
+            in_hx = s.startswith("## 互见")
+            continue
+        if not s:
+            continue
+        if in_hx:
+            check_huxian_line(path, s, f"{path} 互见第{no}行", errs)
             continue
         if not s.startswith(">"):
             errs.append(f"{path} 正文第{no}行: 不是引文行（正文只能放原文）")
@@ -130,7 +154,7 @@ def verify_file(path):
                 errs.append(f"{path}: 编号 {mem['id']} 在人物表中是 {KNOWN_IDS[mem['id']]}，不是 {mem.get('姓名')}")
     for no, line in enumerate(body.splitlines(), 1):
         s = line.strip()
-        if "家族" in path.parts and s and not s.startswith(("#", ">", "<!--")):
+        if "家族" in path.parts and s and not s.startswith(("#", ">", "<!--", "- ")):
             errs.append(f"{path} 正文第{no}行: 不是定位符行")
         elif "家族" in path.parts and s.startswith(">"):
             check_body_line(path, s, f"{path} 正文第{no}行", errs)

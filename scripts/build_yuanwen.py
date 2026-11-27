@@ -34,6 +34,19 @@ def citations():
     return idx
 
 
+def huxian_juan():
+    """互见链接到的卷也要生成（互见不列入“引用此段”）。"""
+    from reanchor import split_huxian
+    out = set()
+    for f in [*(ROOT / "人物").rglob("*.md"), *(ROOT / "家族").rglob("*.md")]:
+        if f.name.startswith("_"):
+            continue
+        for loc in split_huxian(f.read_text(encoding="utf-8").split("---\n", 2)[2])[1]:
+            info, juan, _, _ = parse(loc)
+            out.add((info["name"], juan))
+    return out
+
+
 def src_note(c):
     if not c:
         return "见 原文/README.md"
@@ -51,9 +64,9 @@ def main(books):
     """被引用的书都生成；已用书目（scripts/used_books.txt，即有人物首见于此的书）生成全书，其余只生成被引用到的卷。"""
     cites = citations()
     full = set((ROOT / "scripts" / "used_books.txt").read_text(encoding="utf-8").split())
-    cited_juan = {(k[0], k[1]) for k in cites}
+    cited_juan = {(k[0], k[1]) for k in cites} | huxian_juan()
     if not books:
-        books = sorted({k[0] for k in cites} | full)
+        books = sorted({k[0] for k in cites} | full | {b for b, _ in cited_juan})
     import shutil
     for d in OUT.iterdir():
         if d.is_dir():
