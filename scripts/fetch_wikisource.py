@@ -36,7 +36,7 @@ def cn2int(s):
     return total + cur
 
 
-JUAN = re.compile(r"卷([0-9〇零一二三四五六七八九十百]+)((?:[上中下])?(?:之[上中下])?)$")
+JUAN = re.compile(r"卷([0-9〇零一二三四五六七八九十百]+)((?:[上中下])?(?:之[上中下])?|[ab])$")  # 维基文库以 b 表示下卷
 
 
 def api(**params):
